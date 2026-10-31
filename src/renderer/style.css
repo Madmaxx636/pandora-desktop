@@ -53,9 +53,9 @@ input { font: inherit; color: inherit; }
 .btn.primary:disabled { opacity: .6; cursor: default; }
 
 /* Shell */
-.app { height: 100%; display: grid; grid-template-columns: var(--side-w, 280px) 1fr; grid-template-rows: 1fr 92px; gap: 8px; padding: 8px; }
+.app { --side-eff: min(var(--side-w, 280px), 40vw); height: 100%; display: grid; grid-template-columns: var(--side-eff) 1fr; grid-template-rows: 1fr 92px; gap: 8px; padding: 8px; }
 .sidebar { grid-row: 1; background: var(--panel); border-radius: var(--radius); display: flex; flex-direction: column; min-height: 0; padding: 18px 8px 10px; }
-.main { grid-column: 2; grid-row: 1; position: relative; background: var(--panel); border-radius: var(--radius); overflow-y: auto; min-height: 0; }
+.main { container: pane / inline-size; grid-column: 2; grid-row: 1; min-width: 0; position: relative; background: var(--panel); border-radius: var(--radius); overflow-y: auto; min-height: 0; }
 .player { grid-column: 1 / -1; grid-row: 2; display: grid; grid-template-columns: 1fr minmax(320px, 560px) 1fr; align-items: center; padding: 0 16px; background: var(--panel); border-radius: var(--radius); }
 
 .brand { display: flex; align-items: center; gap: 10px; padding: 0 12px 16px; }
@@ -112,10 +112,10 @@ input { font: inherit; color: inherit; }
 
 /* Now playing */
 .hero { display: flex; align-items: flex-end; gap: 28px; padding-top: 12px; }
-.hero-art { width: 232px; height: 232px; border-radius: 10px; object-fit: cover; background: var(--elev); box-shadow: 0 20px 50px rgba(0,0,0,.55); flex: none; }
+.hero-art { width: clamp(150px, 26cqw, 300px); height: clamp(150px, 26cqw, 300px); border-radius: 10px; object-fit: cover; background: var(--elev); box-shadow: 0 20px 50px rgba(0,0,0,.55); flex: none; }
 .hero-meta { min-width: 0; padding-bottom: 6px; }
 .eyebrow { text-transform: uppercase; letter-spacing: .1em; font-size: 12px; font-weight: 700; margin-bottom: 8px; }
-.hero h1 { margin: 0; font-size: clamp(30px, 4.4vw, 58px); line-height: 1.05; letter-spacing: -1.5px; user-select: text; }
+.hero h1 { margin: 0; font-size: clamp(26px, 6.2cqw, 58px); line-height: 1.05; letter-spacing: -1.5px; user-select: text; }
 .hero-sub { margin-top: 14px; font-size: 15px; font-weight: 600; user-select: text; }
 .hero-sub .muted { font-weight: 400; }
 .dot { margin: 0 8px; color: var(--muted); }
@@ -161,7 +161,6 @@ input { font: inherit; color: inherit; }
 
 @media (max-width: 1000px) {
   
-  .hero-art { width: 170px; height: 170px; }
   .p-right { display: none; }
   .player { grid-template-columns: 1fr minmax(260px, 420px); }
 }
@@ -174,7 +173,6 @@ input { font: inherit; color: inherit; }
 .rating { margin-top: 14px; display: inline-flex; align-items: center; gap: 6px; color: var(--accent-2); font-weight: 600; font-size: 13px; }
 .rating svg { width: 16px; height: 16px; }
 .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
-@media (max-width: 1100px) { .two-col { grid-template-columns: 1fr; gap: 0; } }
 .tracklist .none { color: var(--muted); padding: 10px; }
 .row .t-text { min-width: 0; }
 .row .t-title, .row .t-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -249,7 +247,45 @@ kbd { background: var(--bg); border-radius: 6px; padding: 2px 8px; font: 12px ui
 
 /* Resizable sidebar */
 .app { position: relative; }
-.resizer { position: absolute; z-index: 20; top: 8px; bottom: 108px; left: calc(8px + var(--side-w, 280px)); width: 8px; cursor: col-resize; border-radius: 4px; transition: background .15s; }
+.resizer { position: absolute; z-index: 20; top: 8px; bottom: 108px; left: calc(8px + var(--side-eff, 280px)); width: 8px; cursor: col-resize; border-radius: 4px; transition: background .15s; }
 .resizer:hover, .resizer.dragging { background: rgba(var(--tint), .5); }
 body.resizing { cursor: col-resize; user-select: none; }
 body.resizing iframe { pointer-events: none; }
+
+/* The station page reflows with the width of the main pane (not the window), so it also adapts when the sidebar is resized. */
+@container pane (max-width: 920px) {
+  .two-col { grid-template-columns: 1fr; gap: 0; }
+}
+@container pane (max-width: 640px) {
+  .view { padding: 16px 16px 32px; }
+  .topbar { padding: 12px 16px 0; }
+  .view-title { font-size: 22px; margin-bottom: 14px; }
+  .grid { gap: 12px; }
+  .station-bar { flex-wrap: wrap; margin-bottom: 20px; }
+  .station-bar .tune-open { margin-left: 0; }
+  .hero h1 { letter-spacing: -.8px; overflow-wrap: anywhere; }
+  .name-input { width: 100%; }
+}
+@container pane (max-width: 480px) {
+  .hero { flex-direction: column; align-items: flex-start; gap: 18px; }
+  .hero-art { width: min(100%, 320px); height: auto; aspect-ratio: 1; }
+}
+@container pane (max-width: 420px) {
+  .hero-art { width: 100%; }
+  .station-name { font-size: 22px; }
+  .row .t-thumb { opacity: 1; }
+}
+@container pane (min-width: 1100px) {
+  .view { padding-left: 48px; padding-right: 48px; }
+  .topbar { padding-left: 48px; padding-right: 48px; }
+  .two-col { gap: 56px; }
+}
+
+/* Player bar on small windows */
+@media (max-width: 720px) {
+  .player { grid-template-columns: minmax(0, 1fr) minmax(170px, 260px); padding: 0 10px; }
+  .p-track { gap: 8px; }
+  .bar-art { width: 48px; height: 48px; }
+  .time { display: none; }
+  .controls { gap: 12px; }
+}
