@@ -292,3 +292,8 @@ body.resizing iframe { pointer-events: none; }
 
 .t-thumb.t-play svg { width: 16px; height: 16px; transform: none; }
 .t-thumb.t-play:hover { color: var(--accent-2); }
+
+/* Station page: Up next on top, History below */
+.stack { display: flex; flex-direction: column; }
+.more-btn { margin: 6px 0 0 10px; padding: 6px 4px; color: var(--muted); font-weight: 600; font-size: 13px; text-align: left; }
+.more-btn:hover { color: var(--text); }

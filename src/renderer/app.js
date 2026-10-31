@@ -105,6 +105,7 @@ const state = {
   failures: 0,
   tuning: null, // station open on the tune page
   view: 'home',
+  historyOpen: false, // whether the older History rows are expanded
 };
 
 const ICON = {
@@ -340,6 +341,10 @@ function rateButtons(t, onPlay) {
 const isLiked = (t) => !!t && t.rating === 1;
 const isDisliked = (t) => !!t && t.rating === -1;
 
+// Up next shows this many songs; History shows this many and tucks the older ones behind "Show more".
+const UP_NEXT_SHOWN = 5;
+const HISTORY_SHOWN = 5;
+
 function renderNow() {
   const t = state.track;
   $('nowEmpty').classList.toggle('hidden', !!t);
@@ -362,9 +367,16 @@ function renderNow() {
   else if (isDisliked(t)) rating.append(svgNode(ICON.thumb), 'You thumbed this down');
   rating.classList.toggle('down', isDisliked(t));
 
-  const up = state.queue.map((q) => trackRow(q, { rateable: true }));
+  const up = state.queue.slice(0, UP_NEXT_SHOWN).map((q) => trackRow(q, { rateable: true }));
   $('upNext').replaceChildren(...(up.length ? up : [el('div', { className: 'none', textContent: 'Loading more songs…' })]));
-  const hist = state.history.map((h) => trackRow(h, { rateable: true, onPlay: () => replayTrack(h) }));
+  const shown = state.historyOpen ? state.history : state.history.slice(0, HISTORY_SHOWN);
+  const hist = shown.map((h) => trackRow(h, { rateable: true, onPlay: () => replayTrack(h) }));
+  const hidden = state.history.length - HISTORY_SHOWN;
+  if (hidden > 0) {
+    const more = el('button', { className: 'more-btn', textContent: state.historyOpen ? 'Show less' : `Show ${hidden} more` });
+    more.addEventListener('click', () => { state.historyOpen = !state.historyOpen; renderNow(); });
+    hist.push(more);
+  }
   $('history').replaceChildren(...(hist.length ? hist : [el('div', { className: 'none', textContent: 'Songs you’ve heard will show up here.' })]));
 }
 
@@ -388,7 +400,7 @@ function saveHistory() {
 }
 
 // Keep at least this many songs queued (and buffering) ahead of the one playing.
-const QUEUE_TARGET = 4;
+const QUEUE_TARGET = 5;
 
 async function fillQueue() {
   if (state.loading || !state.station) return;
