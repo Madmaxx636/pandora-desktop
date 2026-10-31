@@ -40,19 +40,10 @@
         "AppImage"
       ],
       "icon": "build/icon.png",
-      "category": "AudioVideo",
+      "category": "AudioVideo;Audio;Player;Music",
       "synopsis": "Pandora Radio desktop client",
       "maintainer": "Lane <16749601+Madmaxx636@users.noreply.github.com>",
-      "syncDesktopName": true,
-      "desktop": {
-        "entry": {
-          "Name": "Pandora",
-          "Comment": "Listen to Pandora Radio",
-          "Categories": "AudioVideo;Audio;Player;Music;",
-          "Keywords": "pandora;radio;music;streaming;",
-          "StartupWMClass": "Pandora"
-        }
-      }
+      "syncDesktopName": true
     },
     "win": {
       "target": [
