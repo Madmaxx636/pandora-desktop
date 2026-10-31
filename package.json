@@ -30,7 +30,8 @@
       {
         "provider": "github",
         "owner": "Madmaxx636",
-        "repo": "pandora-desktop"
+        "repo": "pandora-desktop",
+        "releaseType": "release"
       }
     ],
     "linux": {
