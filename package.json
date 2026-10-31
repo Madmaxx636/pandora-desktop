@@ -1,6 +1,6 @@
 {
   "name": "pandora-desktop",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "A clean desktop client for Pandora Radio",
   "main": "src/main/main.js",
   "scripts": {
