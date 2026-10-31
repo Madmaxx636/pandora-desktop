@@ -233,3 +233,16 @@ kbd { background: var(--bg); border-radius: 6px; padding: 2px 8px; font: 12px ui
 .row .t-x { margin-left: auto; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; color: var(--muted); }
 .row .t-x:hover { color: #ff7b7b; background: var(--elev-2); }
 .row .t-x svg { width: 14px; height: 14px; }
+
+/* Rating songs in Up next / History */
+.t-rate { margin-left: auto; display: flex; gap: 2px; }
+.t-thumb { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; color: var(--muted); opacity: 0; transition: opacity .12s, color .12s; }
+.t-thumb svg { width: 17px; height: 17px; }
+.t-thumb.down svg { transform: rotate(180deg); }
+.row:hover .t-thumb, .t-thumb.on { opacity: 1; }
+.t-thumb:hover { color: var(--text); background: var(--elev-2); }
+.t-thumb.on { color: var(--accent-2); }
+.t-thumb.down.on { color: #ff7b7b; }
+.icon-btn.on#downBtn { color: #ff7b7b; }
+.rating.down { color: #ff7b7b; }
+.rating.down svg { transform: rotate(180deg); }

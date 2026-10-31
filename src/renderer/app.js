@@ -100,8 +100,6 @@ const state = {
   history: [],
   track: null,
   loading: false,
-  liked: new Set(), // track ids thumbed up this session
-  feedbackIds: {}, // track id -> Pandora feedback id, so a thumbs up can be undone
   pinned: store.get('pinned', []),
   lastPlayed: store.get('lastPlayed', {}),
   failures: 0,
@@ -303,23 +301,37 @@ async function removeStation(s) {
   } catch (e) { toast(e.message); }
 }
 
-function trackRow(t, liked, onRemove, removeTitle) {
+/** opts: { onRemove, removeTitle } for an × button, { rateable } for thumbs up/down buttons. */
+function trackRow(t, opts = {}) {
   const row = el('div', { className: 'row' },
     art(t.artUrls),
     el('div', { className: 't-text' },
       el('div', { className: 't-title', textContent: t.title }),
-      el('div', { className: 't-sub', textContent: [t.artist, t.album].filter(Boolean).join(' • ') })));
-  if (liked) { const m = el('div', { className: 't-mark', title: 'Thumbs up' }); m.innerHTML = ICON.thumb; row.append(m); }
-  if (onRemove) {
-    const x = el('button', { className: 't-x', title: removeTitle || 'Remove' });
+      el('div', { className: 't-sub', textContent: [t.artist, t.album].filter(Boolean).join(' \u2022 ') })));
+  if (opts.rateable) row.append(rateButtons(t));
+  if (opts.onRemove) {
+    const x = el('button', { className: 't-x', title: opts.removeTitle || 'Remove' });
     x.innerHTML = ICON.close;
-    x.addEventListener('click', onRemove);
+    x.addEventListener('click', opts.onRemove);
     row.append(x);
   }
   return row;
 }
 
-const isLiked = (t) => !!t && (state.liked.has(t.id) || t.rating === 1);
+function rateButtons(t) {
+  const wrap = el('div', { className: 't-rate' });
+  for (const [positive, name] of [[true, 'thumbs up'], [false, 'thumbs down']]) {
+    const on = t.rating === (positive ? 1 : -1);
+    const b = el('button', { className: 't-thumb' + (positive ? '' : ' down') + (on ? ' on' : ''), title: on ? `Remove ${name}` : name });
+    b.innerHTML = ICON.thumb;
+    b.addEventListener('click', (e) => { e.stopPropagation(); rateTrack(t, positive); });
+    wrap.append(b);
+  }
+  return wrap;
+}
+
+const isLiked = (t) => !!t && t.rating === 1;
+const isDisliked = (t) => !!t && t.rating === -1;
 
 function renderNow() {
   const t = state.track;
@@ -339,11 +351,13 @@ function renderNow() {
   $('heroAlbum').textContent = t.album;
   const rating = $('heroRating');
   rating.replaceChildren();
-  if (isLiked(t)) { rating.append(svgNode(ICON.thumb), 'You thumbed this up'); }
+  if (isLiked(t)) rating.append(svgNode(ICON.thumb), 'You thumbed this up');
+  else if (isDisliked(t)) rating.append(svgNode(ICON.thumb), 'You thumbed this down');
+  rating.classList.toggle('down', isDisliked(t));
 
-  const up = state.queue.map((q) => trackRow(q));
+  const up = state.queue.map((q) => trackRow(q, { rateable: true }));
   $('upNext').replaceChildren(...(up.length ? up : [el('div', { className: 'none', textContent: 'Loading more songs…' })]));
-  const hist = state.history.map((h) => trackRow(h, isLiked(h)));
+  const hist = state.history.map((h) => trackRow(h, { rateable: true }));
   $('history').replaceChildren(...(hist.length ? hist : [el('div', { className: 'none', textContent: 'Songs you’ve heard will show up here.' })]));
 }
 
@@ -353,6 +367,7 @@ function renderBar() {
   $('barArtist').textContent = t ? t.artist : '';
   setArt($('barArt'), t?.artUrls);
   $('upBtn').classList.toggle('on', isLiked(t));
+  $('downBtn').classList.toggle('on', isDisliked(t));
   $('upBtn').disabled = $('downBtn').disabled = $('skipBtn').disabled = !t;
   document.title = t ? `${t.title} • ${t.artist}` : 'Pandora';
 }
@@ -435,34 +450,49 @@ async function skip() {
   try { await next(); } catch (e) { toast(e.message); }
 }
 
-async function rate(positive) {
-  const t = state.track;
+/**
+ * Thumbs up/down any song we hold a token for: the current one, upcoming ones, or ones already played.
+ * Rating the same way again removes the rating. The rating lives on the track so it also shows in saved history.
+ */
+async function rateTrack(t, positive) {
   if (!t) return;
+  const want = positive ? 1 : -1;
+  const wasCurrent = t === state.track;
   try {
-    if (positive && state.liked.has(t.id) && state.feedbackIds[t.id]) {
-      await api(window.pandora.unrate(state.feedbackIds[t.id]));
-      state.liked.delete(t.id);
-      delete state.feedbackIds[t.id];
-      toast('Thumbs up removed');
-      renderBar();
-      renderNow();
-      return;
-    }
-    const feedbackId = await api(window.pandora.rate(t.stationToken, t.id, positive));
-    if (feedbackId) state.feedbackIds[t.id] = feedbackId;
-    if (positive) {
-      state.liked.add(t.id);
-      toast('Thumbs up. We’ll play more like this.');
-      renderBar();
-      renderNow();
-    } else if (settings.thumbsDownSkips) {
-      toast('Got it. Skipping and playing less like this.');
-      await skip();
+    if (t.rating === want) {
+      if (!t.feedbackId) { toast('Remove this rating from Tune station'); return; }
+      await api(window.pandora.unrate(t.feedbackId));
+      t.rating = 0;
+      delete t.feedbackId;
+      toast(positive ? 'Thumbs up removed' : 'Thumbs down removed');
     } else {
-      toast('Got it. We’ll play less like this.');
+      const feedbackId = await api(window.pandora.rate(t.stationToken, t.id, positive));
+      t.rating = want;
+      if (feedbackId) t.feedbackId = feedbackId; else delete t.feedbackId;
+      if (positive) {
+        toast('Thumbs up. We\u2019ll play more like this.');
+      } else {
+        const i = state.queue.indexOf(t);
+        if (i >= 0) {
+          // A song you thumbed down before it played shouldn't play at all.
+          state.queue.splice(i, 1);
+          if (state.queue.length < 2) fillQueue().then(renderNow).catch(() => {});
+          toast('Got it. That one won\u2019t play.');
+        } else if (wasCurrent && settings.thumbsDownSkips) {
+          toast('Got it. Skipping and playing less like this.');
+        } else {
+          toast('Got it. We\u2019ll play less like this.');
+        }
+      }
     }
+    saveHistory();
+    renderBar();
+    renderNow();
+    if (wasCurrent && t.rating === -1 && settings.thumbsDownSkips) await skip();
   } catch (e) { toast(e.message); }
 }
+
+const rate = (positive) => rateTrack(state.track, positive);
 
 function togglePlay() {
   if (!state.track) return;
@@ -653,10 +683,10 @@ async function refreshTune() {
     if (state.tuning !== s) return;
     const list = (id, rows, empty) => $(id).replaceChildren(...(rows.length ? rows : [el('div', { className: 'none', textContent: empty })]));
     list('tuneSeeds', d.seeds.map((x) => trackRow(
-      { title: x.name, artist: x.subtitle, album: '', artUrls: x.artUrl ? [x.artUrl] : [] }, false,
-      () => tuneAction(() => window.pandora.removeSeed(x.id), `Removed ${x.name}`), 'Remove from station')), 'No seeds yet.');
-    const thumbRows = (items, label) => items.map((f) => trackRow(f, false,
-      () => tuneAction(() => window.pandora.unrate(f.id), 'Rating removed'), label));
+      { title: x.name, artist: x.subtitle, album: '', artUrls: x.artUrl ? [x.artUrl] : [] },
+      { onRemove: () => tuneAction(() => window.pandora.removeSeed(x.id), `Removed ${x.name}`), removeTitle: 'Remove from station' })), 'No seeds yet.');
+    const thumbRows = (items, label) => items.map((f) => trackRow(f,
+      { onRemove: () => tuneAction(() => window.pandora.unrate(f.id), 'Rating removed'), removeTitle: label }));
     list('tuneUp', thumbRows(d.up, 'Remove thumbs up'), 'Songs you thumb up will show here.');
     list('tuneDown', thumbRows(d.down, 'Remove thumbs down'), 'Songs you thumb down will show here.');
   } catch (e) { toast(e.message); }
