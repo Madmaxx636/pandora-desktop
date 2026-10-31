@@ -301,14 +301,15 @@ async function removeStation(s) {
   } catch (e) { toast(e.message); }
 }
 
-/** opts: { onRemove, removeTitle } for an × button, { rateable } for thumbs up/down buttons. */
+/** opts: { onRemove, removeTitle } for an × button, { rateable } for thumbs buttons, { onPlay } for a play-again button. */
 function trackRow(t, opts = {}) {
   const row = el('div', { className: 'row' },
     art(t.artUrls),
     el('div', { className: 't-text' },
       el('div', { className: 't-title', textContent: t.title }),
       el('div', { className: 't-sub', textContent: [t.artist, t.album].filter(Boolean).join(' \u2022 ') })));
-  if (opts.rateable) row.append(rateButtons(t));
+  if (opts.rateable) row.append(rateButtons(t, opts.onPlay));
+  if (opts.onPlay) row.addEventListener('dblclick', opts.onPlay);
   if (opts.onRemove) {
     const x = el('button', { className: 't-x', title: opts.removeTitle || 'Remove' });
     x.innerHTML = ICON.close;
@@ -318,8 +319,14 @@ function trackRow(t, opts = {}) {
   return row;
 }
 
-function rateButtons(t) {
+function rateButtons(t, onPlay) {
   const wrap = el('div', { className: 't-rate' });
+  if (onPlay) {
+    const play = el('button', { className: 't-thumb t-play', title: 'Play again' });
+    play.innerHTML = ICON.playSmall;
+    play.addEventListener('click', (e) => { e.stopPropagation(); onPlay(); });
+    wrap.append(play);
+  }
   for (const [positive, name] of [[true, 'thumbs up'], [false, 'thumbs down']]) {
     const on = t.rating === (positive ? 1 : -1);
     const b = el('button', { className: 't-thumb' + (positive ? '' : ' down') + (on ? ' on' : ''), title: on ? `Remove ${name}` : name });
@@ -357,7 +364,7 @@ function renderNow() {
 
   const up = state.queue.map((q) => trackRow(q, { rateable: true }));
   $('upNext').replaceChildren(...(up.length ? up : [el('div', { className: 'none', textContent: 'Loading more songs…' })]));
-  const hist = state.history.map((h) => trackRow(h, { rateable: true }));
+  const hist = state.history.map((h) => trackRow(h, { rateable: true, onPlay: () => replayTrack(h) }));
   $('history').replaceChildren(...(hist.length ? hist : [el('div', { className: 'none', textContent: 'Songs you’ve heard will show up here.' })]));
 }
 
@@ -453,6 +460,28 @@ function notifyTrack(t) {
   try { new Notification(t.title, { body: `${t.artist} • ${t.album}`, icon: t.artUrls[0], silent: true }); } catch {}
 }
 
+/** Plays a song from History again. The current song moves into History; an expired stream link falls back to the station. */
+function replayTrack(t) {
+  if (t === state.track) {
+    audio.currentTime = 0;
+    audio.play().catch(() => {});
+    return;
+  }
+  state.history = state.history.filter((h) => h !== t);
+  if (state.track) state.history.unshift(state.track);
+  state.history = state.history.slice(0, settings.historyLen);
+  t.replayed = true;
+  state.track = t;
+  state.failures = 0;
+  saveHistory();
+  startTrack(t);
+  renderBar();
+  renderNow();
+  tintFrom(t.artUrls);
+  updateMediaSession();
+  pushNowPlaying();
+}
+
 async function skip() {
   try { await next(); } catch (e) { toast(e.message); }
 }
@@ -519,7 +548,7 @@ function wireAudio(a) {
   const live = (fn) => (e) => { if (a === audio) fn(e); };
   a.addEventListener('play', live(syncPlayIcon));
   a.addEventListener('pause', live(syncPlayIcon));
-  a.addEventListener('playing', live(() => { state.failures = 0; }));
+  a.addEventListener('playing', live(() => { state.failures = 0; if (state.track) delete state.track.replayed; }));
   a.addEventListener('ended', live(skip));
   a.addEventListener('timeupdate', live(updateTime));
   a.addEventListener('durationchange', live(updateTime));
@@ -528,6 +557,12 @@ function wireAudio(a) {
     const err = a.error;
     const names = { 1: 'aborted', 2: 'network error', 3: 'could not decode', 4: 'format or URL not supported' };
     console.error('audio error', err, state.track.audioUrl);
+    if (state.track.replayed) {
+      delete state.track.replayed;
+      toast('That song\u2019s stream has expired, so it can\u2019t be replayed. Back to the station.');
+      skip();
+      return;
+    }
     state.failures++;
     if (state.failures >= 3) {
       a.pause();
@@ -593,7 +628,8 @@ function startTrack(t) {
   audio = a;
   if (prev !== a) discardAudio(prev);
   updateTime();
-  a.play().catch((e) => { if (e.name !== 'AbortError') toast(`Couldn\u2019t start playback: ${e.message}`); });
+  // AbortError is a skip mid-load; NotSupportedError is a dead stream, which the element's error event reports.
+  a.play().catch((e) => { if (e.name !== 'AbortError' && e.name !== 'NotSupportedError') toast(`Couldn\u2019t start playback: ${e.message}`); });
 }
 
 function pushNowPlaying() {

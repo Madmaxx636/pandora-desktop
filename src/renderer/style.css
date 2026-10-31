@@ -289,3 +289,6 @@ body.resizing iframe { pointer-events: none; }
   .time { display: none; }
   .controls { gap: 12px; }
 }
+
+.t-thumb.t-play svg { width: 16px; height: 16px; transform: none; }
+.t-thumb.t-play:hover { color: var(--accent-2); }
