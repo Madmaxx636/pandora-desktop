@@ -1,0 +1,78 @@
+{
+  "name": "pandora-desktop",
+  "version": "1.0.0",
+  "description": "A clean desktop client for Pandora Radio",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist:linux": "electron-builder --linux deb AppImage",
+    "dist:win": "electron-builder --win nsis",
+    "release": "electron-builder --publish always"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "egoroof-blowfish": "^4.0.3",
+    "electron-updater": "^6.8.11"
+  },
+  "devDependencies": {
+    "electron": "^45.2.1",
+    "electron-builder": "^26.18.0"
+  },
+  "productName": "Pandora",
+  "build": {
+    "appId": "io.github.madmaxx636.pandora-desktop",
+    "productName": "Pandora",
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Madmaxx636",
+        "repo": "pandora-desktop"
+      }
+    ],
+    "linux": {
+      "target": [
+        "deb",
+        "AppImage"
+      ],
+      "icon": "build/icon.png",
+      "category": "AudioVideo",
+      "synopsis": "Pandora Radio desktop client",
+      "maintainer": "Lane <16749601+Madmaxx636@users.noreply.github.com>",
+      "syncDesktopName": true,
+      "desktop": {
+        "entry": {
+          "Name": "Pandora",
+          "Comment": "Listen to Pandora Radio",
+          "Categories": "AudioVideo;Audio;Player;Music;",
+          "Keywords": "pandora;radio;music;streaming;",
+          "StartupWMClass": "Pandora"
+        }
+      }
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "deleteAppDataOnUninstall": false
+    }
+  },
+  "homepage": "https://github.com/Madmaxx636/pandora-desktop",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Madmaxx636/pandora-desktop.git"
+  },
+  "desktopName": "pandora-desktop.desktop",
+  "author": {
+    "name": "Lane",
+    "email": "16749601+Madmaxx636@users.noreply.github.com"
+  }
+}
