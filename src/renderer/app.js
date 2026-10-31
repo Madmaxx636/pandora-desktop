@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-const audio = $('audio');
+let audio = $('audio'); // the song playing now; upcoming songs sit in their own elements in `preloaded`
 
 /* ---------- storage & settings ---------- */
 
@@ -380,19 +380,26 @@ function saveHistory() {
   if (state.station) store.set(historyKey(state.station), state.history.slice(0, settings.historyLen));
 }
 
+// Keep at least this many songs queued (and buffering) ahead of the one playing.
+const QUEUE_TARGET = 4;
+
 async function fillQueue() {
   if (state.loading || !state.station) return;
   state.loading = true;
   const station = state.station;
   try {
     const tracks = await api(window.pandora.playlist(station.token, settings.quality));
-    if (state.station === station) state.queue.push(...tracks);
+    if (state.station === station) {
+      state.queue.push(...tracks);
+      preloadUpcoming();
+    }
   } finally {
     state.loading = false;
   }
 }
 
 function stopPlayback() {
+  clearPreload();
   audio.pause();
   audio.removeAttribute('src');
   Object.assign(state, { station: null, track: null, queue: [], history: [] });
@@ -403,6 +410,7 @@ function stopPlayback() {
 }
 
 async function playStation(s) {
+  clearPreload();
   state.station = s;
   state.queue = [];
   state.history = store.get(historyKey(s), []);
@@ -430,15 +438,14 @@ async function next(record = true) {
     saveHistory();
   }
   state.track = t;
-  audio.src = t.audioUrl;
-  audio.play().catch((e) => { if (e.name !== 'AbortError') toast(`Couldn’t start playback: ${e.message}`); });
+  startTrack(t);
   renderBar();
   renderNow();
   tintFrom(t.artUrls);
   updateMediaSession();
   notifyTrack(t);
   pushNowPlaying();
-  if (state.queue.length < 2) fillQueue().then(renderNow).catch(() => {});
+  if (state.queue.length < QUEUE_TARGET) fillQueue().then(renderNow).catch(() => {});
 }
 
 function notifyTrack(t) {
@@ -476,7 +483,8 @@ async function rateTrack(t, positive) {
         if (i >= 0) {
           // A song you thumbed down before it played shouldn't play at all.
           state.queue.splice(i, 1);
-          if (state.queue.length < 2) fillQueue().then(renderNow).catch(() => {});
+          releasePreload(t.id);
+          if (state.queue.length < QUEUE_TARGET) fillQueue().then(renderNow).catch(() => {});
           toast('Got it. That one won\u2019t play.');
         } else if (wasCurrent && settings.thumbsDownSkips) {
           toast('Got it. Skipping and playing less like this.');
@@ -506,30 +514,87 @@ $('downBtn').addEventListener('click', () => rate(false));
 $('replayBtn').addEventListener('click', () => { audio.currentTime = 0; });
 $('refreshBtn').addEventListener('click', () => loadStations().catch((e) => toast(e.message)));
 
-audio.addEventListener('play', syncPlayIcon);
-audio.addEventListener('pause', syncPlayIcon);
-audio.addEventListener('playing', () => { state.failures = 0; });
-audio.addEventListener('ended', skip);
-audio.addEventListener('error', () => {
-  if (!state.track) return;
-  const err = audio.error;
-  const names = { 1: 'aborted', 2: 'network error', 3: 'could not decode', 4: 'format or URL not supported' };
-  console.error('audio error', err, state.track.audioUrl);
-  state.failures++;
-  if (state.failures >= 3) {
-    audio.pause();
-    toast(`Playback keeps failing (${names[err?.code] || 'unknown error'}). Stopped.`);
-    return;
-  }
-  toast(`Stream failed (${names[err?.code] || 'unknown'}), trying the next song`);
-  skip();
-});
-audio.addEventListener('timeupdate', () => {
+/** Wires an audio element's events to the player; events from any element that isn't the current one are ignored. */
+function wireAudio(a) {
+  const live = (fn) => (e) => { if (a === audio) fn(e); };
+  a.addEventListener('play', live(syncPlayIcon));
+  a.addEventListener('pause', live(syncPlayIcon));
+  a.addEventListener('playing', live(() => { state.failures = 0; }));
+  a.addEventListener('ended', live(skip));
+  a.addEventListener('timeupdate', live(updateTime));
+  a.addEventListener('durationchange', live(updateTime));
+  a.addEventListener('error', live(() => {
+    if (!state.track) return;
+    const err = a.error;
+    const names = { 1: 'aborted', 2: 'network error', 3: 'could not decode', 4: 'format or URL not supported' };
+    console.error('audio error', err, state.track.audioUrl);
+    state.failures++;
+    if (state.failures >= 3) {
+      a.pause();
+      toast(`Playback keeps failing (${names[err?.code] || 'unknown error'}). Stopped.`);
+      return;
+    }
+    toast(`Stream failed (${names[err?.code] || 'unknown'}), trying the next song`);
+    skip();
+  }));
+}
+wireAudio(audio);
+
+function updateTime() {
   const d = audio.duration;
   $('curTime').textContent = fmt(audio.currentTime);
   $('durTime').textContent = fmt(d);
   $('seekFill').style.width = d ? `${(audio.currentTime / d) * 100}%` : '0';
-});
+}
+
+/* Preloading: every queued song gets its own element that starts buffering right away, so a skip or the
+   end of a song switches to audio that is already downloading instead of waiting on the network. */
+const preloaded = new Map(); // track id -> HTMLAudioElement
+
+function createAudio(url) {
+  const a = new Audio();
+  a.preload = 'auto';
+  a.volume = audio.volume;
+  a.muted = audio.muted;
+  wireAudio(a);
+  a.src = url;
+  return a;
+}
+
+function discardAudio(a) {
+  a.pause();
+  a.removeAttribute('src');
+  a.load(); // aborts any download still in flight
+}
+
+function preloadUpcoming() {
+  for (const t of state.queue) if (!preloaded.has(t.id)) preloaded.set(t.id, createAudio(t.audioUrl));
+}
+
+function releasePreload(id) {
+  const a = preloaded.get(id);
+  if (!a) return;
+  discardAudio(a);
+  preloaded.delete(id);
+}
+
+function clearPreload() {
+  for (const id of [...preloaded.keys()]) releasePreload(id);
+}
+
+function startTrack(t) {
+  const prev = audio;
+  let a = preloaded.get(t.id);
+  preloaded.delete(t.id);
+  if (a?.error) { discardAudio(a); a = null; }
+  if (!a) a = createAudio(t.audioUrl);
+  a.volume = prev.volume;
+  a.muted = prev.muted;
+  audio = a;
+  if (prev !== a) discardAudio(prev);
+  updateTime();
+  a.play().catch((e) => { if (e.name !== 'AbortError') toast(`Couldn\u2019t start playback: ${e.message}`); });
+}
 
 function pushNowPlaying() {
   const t = state.track;
@@ -698,7 +763,7 @@ async function tuneAction(fn, message) {
     await api(fn());
     toast(message);
     await refreshTune();
-    if (state.station?.token === state.tuning?.token) { state.queue = []; fillQueue().then(renderNow).catch(() => {}); }
+    if (state.station?.token === state.tuning?.token) { state.queue = []; clearPreload(); fillQueue().then(renderNow).catch(() => {}); }
   } catch (e) { toast(e.message); }
 }
 
@@ -852,6 +917,38 @@ async function logout() {
   $('app').classList.add('hidden');
   $('login').classList.remove('hidden');
 }
+
+/* ---------- resizable sidebar ---------- */
+
+const SIDE_MIN = 200;
+const SIDE_MAX = 480;
+const SIDE_DEFAULT = 280;
+
+function setSideWidth(px, save = true) {
+  const w = Math.min(SIDE_MAX, Math.max(SIDE_MIN, Math.round(px)));
+  document.documentElement.style.setProperty('--side-w', `${w}px`);
+  if (save) store.set('sideWidth', w);
+}
+
+(() => {
+  setSideWidth(store.get('sideWidth', SIDE_DEFAULT), false);
+  const handle = $('sideResizer');
+  handle.addEventListener('pointerdown', (e) => {
+    handle.setPointerCapture(e.pointerId);
+    handle.classList.add('dragging');
+    document.body.classList.add('resizing');
+    const move = (ev) => setSideWidth(ev.clientX - 8 - 4, false);
+    const up = () => {
+      handle.removeEventListener('pointermove', move);
+      handle.classList.remove('dragging');
+      document.body.classList.remove('resizing');
+      setSideWidth(parseInt(getComputedStyle(document.documentElement).getPropertyValue('--side-w'), 10));
+    };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', up, { once: true });
+  });
+  handle.addEventListener('dblclick', () => setSideWidth(SIDE_DEFAULT));
+})();
 
 /* ---------- auth ---------- */
 
