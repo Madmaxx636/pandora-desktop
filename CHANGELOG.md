@@ -2,7 +2,7 @@
 
 All notable changes to Pandora Desktop. Each release's notes on GitHub repeat its entry here, with SHA-256 checksums for the installers.
 
-## Unreleased
+## 1.0.8 - 2026-11-01
 
 - Fixed the interface looking far too big on a full screen: Auto scale no longer enlarges anything. It only shrinks the interface for windows smaller than the default size. (The 115% and 130% options in Settings are still there if you want it bigger.)
 - Settings now sits in a centred column instead of hugging the left edge.
