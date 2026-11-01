@@ -2,7 +2,7 @@
 
 All notable changes to Pandora Desktop. Each release's notes on GitHub repeat its entry here, with SHA-256 checksums for the installers.
 
-## Unreleased
+## 1.0.7 - 2026-11-01
 
 - The whole interface now scales to the window. Auto mode shrinks it in a small window and enlarges it on a full screen, and Settings → Appearance → Interface scale lets you pick a fixed size instead.
 - In a small corner window the sidebar becomes a slim icon strip and the player bar tightens up. Windows that are short get tighter spacing and a smaller song artwork.
