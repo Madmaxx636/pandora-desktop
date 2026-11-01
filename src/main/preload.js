@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webFrame } = require('electron');
 
 const call = (channel) => (...args) => ipcRenderer.invoke(channel, ...args);
 
@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('pandora', {
   playlist: call('playlist:get'),
   search: call('music:search'),
   rate: call('track:rate'),
+  setZoom: (factor) => webFrame.setZoomFactor(factor),
   setBehavior: (b) => ipcRenderer.send('app:behavior', b),
   nowPlaying: (info) => ipcRenderer.send('app:nowPlaying', info),
   checkUpdates: () => ipcRenderer.send('update:check'),

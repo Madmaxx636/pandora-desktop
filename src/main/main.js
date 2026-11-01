@@ -189,8 +189,8 @@ function createWindow(hidden) {
   win = new BrowserWindow({
     width: 1240,
     height: 800,
-    minWidth: 560,
-    minHeight: 460,
+    minWidth: 380,
+    minHeight: 300,
     show: !hidden,
     backgroundColor: '#0b0b0f',
     title: 'Pandora',

@@ -22,6 +22,7 @@ const DEFAULTS = {
   tint: true,
   sort: 'pandora',
   cardSize: 'medium',
+  uiScale: 'auto',
   historyLen: 20,
   confirmDelete: true,
   shortcuts: true,
@@ -51,6 +52,8 @@ const SCHEMA = [
     { key: 'accent', label: 'Accent colour', type: 'swatches',
       options: ['#3b6bff', '#8b5cf6', '#22c55e', '#ec4899', '#f97316', '#ef4444'] },
     { key: 'tint', label: 'Album colour backdrop', desc: 'Tint the page with the current album’s colour.', type: 'toggle' },
+    { key: 'uiScale', label: 'Interface scale', desc: 'Auto fits the whole interface to the window: compact in a small corner window, larger on a full screen.', type: 'seg',
+      options: [['auto', 'Auto'], [0.85, '85%'], [1, '100%'], [1.15, '115%'], [1.3, '130%']] },
     { key: 'cardSize', label: 'Station card size', type: 'seg',
       options: [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']] },
   ] },
@@ -85,11 +88,48 @@ function applySettings() {
   root.setProperty('--card-min', CARD_MIN[settings.cardSize]);
   if (!settings.tint) root.setProperty('--tint', hexToRgb(settings.accent));
   store.set('settings', settings);
+  applyScale(true);
   window.pandora.setBehavior({
     closeAction: settings.closeAction, startMinimized: settings.startMinimized, launchAtLogin: settings.launchAtLogin,
     autoUpdate: settings.autoUpdate,
   });
 }
+
+/* ---------- auto scaling ---------- */
+
+// The interface is designed for roughly 1280x800. Other window sizes scale the whole UI (page zoom) toward
+// that design size, and small windows also switch to the compact layouts in the stylesheet (body.mini / body.short).
+const DESIGN_W = 1280;
+const DESIGN_H = 800;
+const MINI_BELOW = 720; // real window width (px) under which the sidebar becomes an icon rail
+const SHORT_BELOW = 560; // real window height (px) under which vertical spacing tightens
+let uiZoom = null; // zoom currently applied to the page
+
+function autoZoom(w, h) {
+  const fit = Math.min(w / DESIGN_W, h / DESIGN_H);
+  // Grow gently on big screens; shrink more slowly than the window so small windows stay readable.
+  const z = fit >= 1 ? 1 + (fit - 1) * 0.6 : 0.6 + 0.4 * Math.pow(fit, 0.6);
+  return Math.min(1.6, Math.max(0.65, z));
+}
+
+function applyScale(force = false) {
+  // innerWidth/innerHeight are in zoomed CSS pixels; multiplying by the zoom gives the real window size.
+  const w = window.innerWidth * (uiZoom || 1);
+  const h = window.innerHeight * (uiZoom || 1);
+  const z = Math.round((settings.uiScale === 'auto' ? autoZoom(w, h) : settings.uiScale) * 20) / 20;
+  if (force || z !== uiZoom) {
+    uiZoom = z;
+    window.pandora.setZoom(z);
+  }
+  document.body.classList.toggle('mini', w < MINI_BELOW);
+  document.body.classList.toggle('short', h < SHORT_BELOW);
+}
+
+let scaleTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(scaleTimer);
+  scaleTimer = setTimeout(applyScale, 80);
+});
 
 /* ---------- state ---------- */
 

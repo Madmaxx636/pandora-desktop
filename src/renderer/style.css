@@ -297,3 +297,36 @@ body.resizing iframe { pointer-events: none; }
 .stack { display: flex; flex-direction: column; }
 .more-btn { margin: 6px 0 0 10px; padding: 6px 4px; color: var(--muted); font-weight: 600; font-size: 13px; text-align: left; }
 .more-btn:hover { color: var(--text); }
+
+/* Compact layouts, switched on from the real window size (see applyScale in app.js). */
+body.mini .app { --side-eff: 68px; grid-template-rows: 1fr 72px; padding: 6px; gap: 6px; }
+body.mini .resizer { display: none; }
+body.mini .sidebar { padding: 12px 6px 8px; }
+body.mini .brand { justify-content: center; padding: 0 0 12px; }
+body.mini .brand-name, body.mini .side-head, body.mini .side-label, body.mini .pin, body.mini .st > div:last-child { display: none; }
+body.mini .nav-item { font-size: 0; gap: 0; justify-content: center; padding: 10px 0; }
+body.mini .st-wrap .st { padding: 5px; justify-content: center; }
+body.mini .topbar { padding: 10px 12px 0; }
+body.mini .search-box { height: 40px; }
+body.mini .view { padding: 14px 14px 24px; }
+body.mini .view-title { font-size: 20px; margin-bottom: 12px; }
+body.mini .grid { --card-min: 120px; gap: 10px; }
+body.mini .card { padding: 10px; }
+body.mini .settings .set-row { flex-wrap: wrap; gap: 10px; }
+body.mini .player { grid-template-columns: minmax(0, 1fr) minmax(150px, 240px); padding: 0 10px; }
+body.mini .p-right, body.mini .time, body.mini #replayBtn { display: none; }
+body.mini .bar-art { width: 46px; height: 46px; }
+body.mini .controls { gap: 10px; }
+body.mini .p-track .icon-btn { width: 30px; height: 30px; }
+
+body.short .app { grid-template-rows: 1fr 72px; }
+body.short .view { padding-top: 12px; padding-bottom: 20px; }
+body.short .station-bar { margin-bottom: 12px; }
+body.short .station-bar img, body.short .station-bar .ph { width: 48px; height: 48px; }
+body.short .station-name { font-size: 20px; }
+body.short .hero { flex-direction: row; align-items: flex-end; gap: 16px; }
+body.short .hero-art { width: min(34cqw, 150px); height: min(34cqw, 150px); aspect-ratio: auto; }
+body.short .hero h1 { font-size: clamp(22px, 4.5cqw, 36px); }
+body.short .hero-album { display: none; }
+body.short .section-title { margin: 16px 0 6px; }
+body.short .bar-art { width: 46px; height: 46px; }
