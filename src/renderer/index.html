@@ -45,7 +45,7 @@
     <header class="topbar">
       <div class="search-box">
         <svg viewBox="0 0 24 24"><path d="M10.5 3a7.5 7.5 0 0 1 5.9 12.1l4.3 4.3-1.4 1.4-4.3-4.3A7.5 7.5 0 1 1 10.5 3zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11z"/></svg>
-        <input id="searchInput" type="text" placeholder="Search artists, songs or genres to start a station">
+        <input id="searchInput" type="text" spellcheck="true" placeholder="Search artists, songs or genres to start a station">
         <button id="searchClear" class="icon-btn small hidden" title="Clear"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2.4" fill="none"/></svg></button>
       </div>
     </header>
@@ -74,7 +74,7 @@
         <div id="tuneArt"></div>
         <div>
           <div class="eyebrow">Tune station</div>
-          <input id="tuneName" class="name-input" spellcheck="false" maxlength="60">
+          <input id="tuneName" class="name-input" spellcheck="true" maxlength="60">
         </div>
         <button id="tuneSave" class="set-btn hidden">Save name</button>
       </div>
@@ -82,7 +82,7 @@
       <p class="muted tune-help">Add an artist, song or genre and this station will play more music like it.</p>
       <div class="search-box tune-search">
         <svg viewBox="0 0 24 24"><path d="M10.5 3a7.5 7.5 0 0 1 5.9 12.1l4.3 4.3-1.4 1.4-4.3-4.3A7.5 7.5 0 1 1 10.5 3zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11z"/></svg>
-        <input id="tuneSearch" type="text" placeholder="Search to add to this station">
+        <input id="tuneSearch" type="text" spellcheck="true" placeholder="Search to add to this station">
       </div>
       <div id="tuneResults" class="tune-results"></div>
       <h3 class="section-title">Artists <span id="countArtists" class="count"></span></h3>

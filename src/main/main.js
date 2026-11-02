@@ -185,6 +185,42 @@ function createTray() {
   syncTray();
 }
 
+// Chromium underlines misspellings by itself, but offers nothing to fix them with unless the app
+// builds the right-click menu: suggestions, "Add to dictionary", and the usual edit actions.
+function setupSpellcheck(contents) {
+  const ses = contents.session;
+  ses.setSpellCheckerEnabled(true);
+  const wanted = [app.getLocale(), 'en-US'].filter(Boolean);
+  const available = ses.availableSpellCheckerLanguages;
+  const langs = wanted.filter((l, i) => available.includes(l) && wanted.indexOf(l) === i);
+  if (langs.length) ses.setSpellCheckerLanguages(langs);
+
+  contents.on('context-menu', (_e, params) => {
+    const items = [];
+    if (params.misspelledWord) {
+      for (const word of params.dictionarySuggestions.slice(0, 5)) {
+        items.push({ label: word, click: () => contents.replaceMisspelling(word) });
+      }
+      if (!params.dictionarySuggestions.length) items.push({ label: 'No suggestions', enabled: false });
+      items.push({ type: 'separator' });
+      items.push({ label: 'Add to dictionary', click: () => ses.addWordToSpellCheckerDictionary(params.misspelledWord) });
+      items.push({ type: 'separator' });
+    }
+    if (params.isEditable) {
+      const f = params.editFlags;
+      items.push(
+        { label: 'Cut', role: 'cut', enabled: f.canCut },
+        { label: 'Copy', role: 'copy', enabled: f.canCopy },
+        { label: 'Paste', role: 'paste', enabled: f.canPaste },
+        { label: 'Select all', role: 'selectAll', enabled: f.canSelectAll },
+      );
+    } else if (params.selectionText) {
+      items.push({ label: 'Copy', role: 'copy' });
+    }
+    if (items.length) Menu.buildFromTemplate(items).popup({ window: win });
+  });
+}
+
 function createWindow(hidden) {
   win = new BrowserWindow({
     width: 1240,
@@ -204,6 +240,7 @@ function createWindow(hidden) {
     },
   });
   win.removeMenu();
+  setupSpellcheck(win.webContents);
   win.loadFile(path.join(__dirname, '../renderer/index.html'));
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);

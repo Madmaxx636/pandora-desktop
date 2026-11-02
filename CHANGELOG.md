@@ -2,6 +2,10 @@
 
 All notable changes to Pandora Desktop. Each release's notes on GitHub repeat its entry here, with SHA-256 checksums for the installers.
 
+## 1.0.11 - 2026-11-02
+
+- Spell check now works: right-click a misspelled (red-underlined) word in the search boxes or the station name to pick a correction or add it to your dictionary. Right-click also gives Cut, Copy, Paste and Select all in text fields.
+
 ## 1.0.10 - 2026-11-02
 
 - You can now delete a station from the sidebar (hover it and click the bin) or from the bottom of its Tune station page. Deleting asks first, unless you turned that off in Settings.
