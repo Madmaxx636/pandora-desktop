@@ -2,6 +2,12 @@
 
 All notable changes to Pandora Desktop. Each release's notes on GitHub repeat its entry here, with SHA-256 checksums for the installers.
 
+## Unreleased
+
+- You can now delete a station from the sidebar (hover it and click the bin) or from the bottom of its Tune station page. Deleting asks first, unless you turned that off in Settings.
+- The main search bar is hidden on the Tune station page. Picking a result from it starts a *new* station, which is easy to mistake for adding to the current one; use "Add variety" there instead. Main search results now say "Start new station" and explain the difference.
+- Fixed an added artist, song or genre sometimes staying stuck on "Adding..." when Pandora listed it under a slightly different name.
+
 ## 1.0.9 - 2026-11-02
 
 - Tune station now lists Artists, Songs and Genres in separate sections, each with a count. The Genres section only appears once the station has one.

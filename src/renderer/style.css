@@ -342,3 +342,11 @@ body.short .bar-art { width: 46px; height: 46px; }
 .t-badge { margin-left: auto; color: var(--accent-2); font-size: 12px; font-weight: 600; }
 .row.fresh { animation: rowIn 2.2s ease-out; }
 @keyframes rowIn { from { background: rgba(var(--tint), .4); transform: translateY(-4px); } to { background: transparent; transform: none; } }
+
+/* Deleting stations; hide the main search on the Tune page */
+.st-wrap.deletable .st { padding-right: 68px; }
+.pin.trash { right: 36px; }
+.pin.trash:hover { color: #ff7b7b; }
+.main.no-search .topbar { display: none; }
+.res-note { margin: 0 0 4px; font-size: 13px; }
+#tuneDelete { margin-top: 4px; }
