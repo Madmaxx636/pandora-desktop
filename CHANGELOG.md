@@ -2,7 +2,7 @@
 
 All notable changes to Pandora Desktop. Each release's notes on GitHub repeat its entry here, with SHA-256 checksums for the installers.
 
-## Unreleased
+## 1.0.9 - 2026-11-02
 
 - Tune station now lists Artists, Songs and Genres in separate sections, each with a count. The Genres section only appears once the station has one.
 - Changes show up straight away: an added artist, song or genre appears immediately as "Adding...", then settles into place with a brief highlight. Removing a seed or a thumbs rating also takes effect on screen at once, and comes back with an error message if Pandora refuses.
