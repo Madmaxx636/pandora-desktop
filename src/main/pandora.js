@@ -146,9 +146,9 @@ class PandoraApi {
     const music = r.music || {};
     const art = (o) => o.artUrl || null;
     const seeds = [
-      ...(music.artists || []).map((a) => ({ id: a.seedId, name: a.artistName, subtitle: 'Artist', artUrl: art(a) })),
-      ...(music.songs || []).map((x) => ({ id: x.seedId, name: x.songName, subtitle: x.artistName, artUrl: art(x) })),
-      ...(music.genres || []).map((g) => ({ id: g.seedId, name: g.genreName, subtitle: 'Genre', artUrl: null })),
+      ...(music.artists || []).map((a) => ({ id: a.seedId, kind: 'artist', name: a.artistName, subtitle: 'Artist', artUrl: art(a) })),
+      ...(music.songs || []).map((x) => ({ id: x.seedId, kind: 'song', name: x.songName, subtitle: x.artistName, artUrl: art(x) })),
+      ...(music.genres || []).map((g) => ({ id: g.seedId, kind: 'genre', name: g.genreName, subtitle: 'Genre', artUrl: null })),
     ].filter((x) => x.id && x.name);
     const thumbs = (list) =>
       (list || [])

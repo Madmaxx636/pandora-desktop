@@ -349,6 +349,7 @@ function trackRow(t, opts = {}) {
     el('div', { className: 't-text' },
       el('div', { className: 't-title', textContent: t.title }),
       el('div', { className: 't-sub', textContent: [t.artist, t.album].filter(Boolean).join(' \u2022 ') })));
+  if (opts.badge) row.append(el('span', { className: 't-badge', textContent: opts.badge }));
   if (opts.rateable) row.append(rateButtons(t, opts.onPlay));
   if (opts.onPlay) row.addEventListener('dblclick', opts.onPlay);
   if (opts.onRemove) {
@@ -815,6 +816,16 @@ const canTune = (s) => !!s && !s.isQuickMix && !s.isThumbprint;
 let tuneFrom = 'home';
 let tuneSearchTimer;
 
+const SEED_SECTIONS = [
+  ['artist', 'tuneArtists', 'countArtists', 'No artists yet. Search above to add one.'],
+  ['song', 'tuneSongs', 'countSongs', 'No songs yet. Search above to add one.'],
+  ['genre', 'tuneGenres', 'countGenres', ''],
+];
+const tuneCache = {}; // station token -> last detail, so reopening a station shows something immediately
+const tuneSeen = {}; // station token -> seed ids already shown, so only genuinely new ones get highlighted
+let tuneSig = '';
+let tuneQueueTimer;
+
 function openTune(s) {
   state.tuning = s;
   if (state.view !== 'tune') tuneFrom = state.view === 'search' ? lastView : state.view;
@@ -824,35 +835,111 @@ function openTune(s) {
   $('tuneSave').classList.add('hidden');
   $('tuneSearch').value = '';
   $('tuneResults').replaceChildren();
-  for (const id of ['tuneSeeds', 'tuneUp', 'tuneDown']) $(id).replaceChildren(el('div', { className: 'none', textContent: 'Loading\u2026' }));
+  state.tuneDetail = tuneCache[s.token] || null;
+  tuneSig = '';
+  if (state.tuneDetail) renderTune();
+  else for (const id of ['tuneArtists', 'tuneSongs', 'tuneUp', 'tuneDown']) $(id).replaceChildren(el('div', { className: 'none', textContent: 'Loading\u2026' }));
   refreshTune();
 }
 
+const tuneNone = (text) => el('div', { className: 'none', textContent: text });
+
+function seedRow(x) {
+  const sub = x.kind === 'song' ? x.subtitle : '';
+  const row = trackRow({ title: x.name, artist: sub, album: '', artUrls: x.artUrl ? [x.artUrl] : [] },
+    x.pending ? { badge: 'Adding\u2026' } : { onRemove: () => dropFromTune('seeds', x, () => window.pandora.removeSeed(x.id), `Removed ${x.name}`), removeTitle: 'Remove from station' });
+  if (x.pending) row.classList.add('pending');
+  if (x.fresh) row.classList.add('fresh');
+  return row;
+}
+
+function renderTune() {
+  const d = state.tuneDetail;
+  if (!d) return;
+  for (const [kind, listId, countId, empty] of SEED_SECTIONS) {
+    const seeds = d.seeds.filter((x) => x.kind === kind);
+    if (kind === 'genre') $('tuneGenresWrap').classList.toggle('hidden', !seeds.length);
+    $(countId).textContent = seeds.length || '';
+    $(listId).replaceChildren(...(seeds.length ? seeds.map(seedRow) : [tuneNone(empty)]));
+  }
+  const thumbRows = (list, items, label) => items.map((f) => trackRow(f,
+    { onRemove: () => dropFromTune(list, f, () => window.pandora.unrate(f.id), 'Rating removed'), removeTitle: label }));
+  const up = thumbRows('up', d.up, 'Remove thumbs up');
+  const down = thumbRows('down', d.down, 'Remove thumbs down');
+  $('tuneUp').replaceChildren(...(up.length ? up : [tuneNone('Songs you thumb up will show here.')]));
+  $('tuneDown').replaceChildren(...(down.length ? down : [tuneNone('Songs you thumb down will show here.')]));
+}
+
+/** Fetches the station's detail quietly and only redraws if something actually changed. */
 async function refreshTune() {
   const s = state.tuning;
   if (!s) return;
   try {
     const d = await api(window.pandora.stationDetail(s.token));
     if (state.tuning !== s) return;
-    const list = (id, rows, empty) => $(id).replaceChildren(...(rows.length ? rows : [el('div', { className: 'none', textContent: empty })]));
-    list('tuneSeeds', d.seeds.map((x) => trackRow(
-      { title: x.name, artist: x.subtitle, album: '', artUrls: x.artUrl ? [x.artUrl] : [] },
-      { onRemove: () => tuneAction(() => window.pandora.removeSeed(x.id), `Removed ${x.name}`), removeTitle: 'Remove from station' })), 'No seeds yet.');
-    const thumbRows = (items, label) => items.map((f) => trackRow(f,
-      { onRemove: () => tuneAction(() => window.pandora.unrate(f.id), 'Rating removed'), removeTitle: label }));
-    list('tuneUp', thumbRows(d.up, 'Remove thumbs up'), 'Songs you thumb up will show here.');
-    list('tuneDown', thumbRows(d.down, 'Remove thumbs down'), 'Songs you thumb down will show here.');
+    const sig = JSON.stringify([d.seeds, d.up, d.down]);
+    const pending = (state.tuneDetail?.seeds || []).filter((p) => p.pending
+      && !d.seeds.some((x) => x.kind === p.kind && x.name.toLowerCase() === p.name.toLowerCase()));
+    if (sig === tuneSig && !pending.length && !(state.tuneDetail?.seeds || []).some((x) => x.pending)) return;
+    tuneSig = sig;
+    const seen = tuneSeen[s.token];
+    for (const x of d.seeds) x.fresh = !!seen && !seen.has(x.id);
+    tuneSeen[s.token] = new Set(d.seeds.map((x) => x.id));
+    d.seeds.push(...pending);
+    state.tuneDetail = tuneCache[s.token] = d;
+    renderTune();
   } catch (e) { toast(e.message); }
 }
 
-/** Runs a change, refreshes the tune page, and refills the queue if the station is playing so it takes effect. */
-async function tuneAction(fn, message) {
+/** After a change, rebuild the upcoming songs (once, however many changes came in) so it takes effect. */
+function syncQueue(s) {
+  clearTimeout(tuneQueueTimer);
+  tuneQueueTimer = setTimeout(() => {
+    if (state.station?.token !== s.token) return;
+    state.queue = [];
+    clearPreload();
+    fillQueue().then(renderNow).catch(() => {});
+  }, 700);
+}
+
+/** Removes a row immediately, then tells Pandora; puts the row back if Pandora refuses. */
+async function dropFromTune(list, item, call, message) {
+  const s = state.tuning;
+  const d = state.tuneDetail;
+  const at = d[list].indexOf(item);
+  if (at < 0) return;
+  d[list].splice(at, 1);
+  renderTune();
   try {
-    await api(fn());
+    await api(call());
     toast(message);
+    syncQueue(s);
+    refreshTune();
+  } catch (e) {
+    if (state.tuneDetail === d) { d[list].splice(Math.min(at, d[list].length), 0, item); renderTune(); }
+    toast(e.message);
+  }
+}
+
+/** Adds a search result to the station: it shows up straight away as "Adding...", then is replaced by the real seed. */
+async function addToTune(hit) {
+  const s = state.tuning;
+  const d = state.tuneDetail || (state.tuneDetail = tuneCache[s.token] = { seeds: [], up: [], down: [] });
+  const pending = { id: `pending:${hit.token}`, kind: hit.kind, name: hit.title, subtitle: hit.kind === 'song' ? hit.subtitle : '', artUrl: null, pending: true };
+  d.seeds.push(pending);
+  $('tuneSearch').value = '';
+  $('tuneResults').replaceChildren();
+  renderTune();
+  try {
+    await api(window.pandora.addSeed(s.token, hit.token));
+    toast(`Added ${hit.title}`);
+    syncQueue(s);
     await refreshTune();
-    if (state.station?.token === state.tuning?.token) { state.queue = []; clearPreload(); fillQueue().then(renderNow).catch(() => {}); }
-  } catch (e) { toast(e.message); }
+  } catch (e) {
+    const cur = state.tuneDetail;
+    if (cur) { cur.seeds = cur.seeds.filter((x) => x !== pending); renderTune(); }
+    toast(e.message);
+  }
 }
 
 $('tuneBtn').addEventListener('click', () => openTune(state.station));
@@ -884,18 +971,19 @@ $('tuneSearch').addEventListener('input', (e) => {
     try {
       const r = await api(window.pandora.search(text));
       if ($('tuneSearch').value.trim() !== text) return;
-      const hits = [...r.artists.slice(0, 4), ...r.songs.slice(0, 4), ...r.genres.slice(0, 2)];
-      $('tuneResults').replaceChildren(...(hits.length ? hits.map((h) => {
-        const row = el('button', { className: 'result' },
-          el('div', {}, el('div', { className: 'r-title', textContent: h.title }), el('div', { className: 'r-sub', textContent: h.subtitle })),
-          el('span', { className: 'r-add', textContent: 'Add to station' }));
-        row.addEventListener('click', async () => {
-          $('tuneSearch').value = '';
-          $('tuneResults').replaceChildren();
-          await tuneAction(() => window.pandora.addSeed(state.tuning.token, h.token), `Added ${h.title}`);
-        });
-        return row;
-      }) : [el('div', { className: 'none', textContent: 'No matches' })]));
+      const out = [];
+      for (const [label, hits] of [['Artists', r.artists.slice(0, 4)], ['Songs', r.songs.slice(0, 4)], ['Genres', r.genres.slice(0, 2)]]) {
+        if (!hits.length) continue;
+        out.push(el('div', { className: 'res-label', textContent: label }));
+        for (const h of hits) {
+          const row = el('button', { className: 'result' },
+            el('div', {}, el('div', { className: 'r-title', textContent: h.title }), el('div', { className: 'r-sub', textContent: h.subtitle })),
+            el('span', { className: 'r-add', textContent: 'Add to station' }));
+          row.addEventListener('click', () => addToTune(h));
+          out.push(row);
+        }
+      }
+      $('tuneResults').replaceChildren(...(out.length ? out : [tuneNone('No matches')]));
     } catch (err) { toast(err.message); }
   }, 300);
 });

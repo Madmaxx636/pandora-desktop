@@ -2,6 +2,13 @@
 
 All notable changes to Pandora Desktop. Each release's notes on GitHub repeat its entry here, with SHA-256 checksums for the installers.
 
+## Unreleased
+
+- Tune station now lists Artists, Songs and Genres in separate sections, each with a count. The Genres section only appears once the station has one.
+- Changes show up straight away: an added artist, song or genre appears immediately as "Adding...", then settles into place with a brief highlight. Removing a seed or a thumbs rating also takes effect on screen at once, and comes back with an error message if Pandora refuses.
+- The page no longer reloads the whole list after each change, and reopening a station shows its last-known list instantly while it quietly refreshes.
+- Search results in the Add variety box are grouped under Artists, Songs and Genres.
+
 ## 1.0.8 - 2026-11-01
 
 - Fixed the interface looking far too big on a full screen: Auto scale no longer enlarges anything. It only shrinks the interface for windows smaller than the default size. (The 115% and 130% options in Settings are still there if you want it bigger.)
