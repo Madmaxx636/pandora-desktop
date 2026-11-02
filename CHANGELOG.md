@@ -2,7 +2,7 @@
 
 All notable changes to Pandora Desktop. Each release's notes on GitHub repeat its entry here, with SHA-256 checksums for the installers.
 
-## Unreleased
+## 1.0.10 - 2026-11-02
 
 - You can now delete a station from the sidebar (hover it and click the bin) or from the bottom of its Tune station page. Deleting asks first, unless you turned that off in Settings.
 - The main search bar is hidden on the Tune station page. Picking a result from it starts a *new* station, which is easy to mistake for adding to the current one; use "Add variety" there instead. Main search results now say "Start new station" and explain the difference.
