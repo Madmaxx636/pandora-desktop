@@ -7,7 +7,8 @@
     "start": "electron .",
     "dist:linux": "electron-builder --linux deb AppImage",
     "dist:win": "electron-builder --win nsis",
-    "release": "electron-builder --publish always"
+    "release": "electron-builder --publish always",
+    "test": "node --test"
   },
   "license": "MIT",
   "dependencies": {

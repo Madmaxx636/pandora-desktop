@@ -139,7 +139,6 @@ const state = {
   queue: [],
   history: [],
   track: null,
-  loading: false,
   pinned: store.get('pinned', []),
   lastPlayed: store.get('lastPlayed', {}),
   failures: 0,
@@ -463,19 +462,29 @@ function saveHistory() {
 // Keep at least this many songs queued (and buffering) ahead of the one playing.
 const QUEUE_TARGET = 5;
 
-async function fillQueue() {
-  if (state.loading || !state.station) return;
-  state.loading = true;
+// Pandora's stream links stop working after a while; a queue older than this is thrown away and fetched again.
+const STALE_MS = 25 * 60 * 1000;
+let filling = null; // { station, promise } while a playlist request is in flight
+
+/** Asks Pandora for more songs. Callers that arrive mid-request wait for it instead of seeing an empty queue. */
+function fillQueue() {
   const station = state.station;
-  try {
-    const tracks = await api(window.pandora.playlist(station.token, settings.quality));
-    if (state.station === station) {
-      state.queue.push(...tracks);
-      preloadUpcoming();
+  if (!station) return Promise.resolve();
+  if (filling?.station === station) return filling.promise;
+  const promise = (async () => {
+    try {
+      const tracks = await api(window.pandora.playlist(station.token, settings.quality));
+      const fetchedAt = Date.now();
+      if (state.station === station) {
+        state.queue.push(...tracks.map((t) => ({ ...t, fetchedAt })));
+        preloadUpcoming();
+      }
+    } finally {
+      if (filling?.promise === promise) filling = null;
     }
-  } finally {
-    state.loading = false;
-  }
+  })();
+  filling = { station, promise };
+  return promise;
 }
 
 function stopPlayback() {
@@ -509,6 +518,10 @@ async function playStation(s) {
 
 async function next(record = true) {
   if (!state.station) return;
+  if (state.queue.length && Date.now() - state.queue[0].fetchedAt > STALE_MS) {
+    state.queue = [];
+    clearPreload();
+  }
   if (state.queue.length === 0) await fillQueue();
   const t = state.queue.shift();
   if (!t) { toast('Pandora has nothing more to play right now'); return; }
@@ -732,8 +745,14 @@ function bindBar(bar, onValue) {
     bar.setPointerCapture(e.pointerId);
     at(e);
     const move = (ev) => at(ev);
+    const stop = () => {
+      bar.removeEventListener('pointermove', move);
+      bar.removeEventListener('pointerup', stop);
+      bar.removeEventListener('pointercancel', stop);
+    };
     bar.addEventListener('pointermove', move);
-    bar.addEventListener('pointerup', () => bar.removeEventListener('pointermove', move), { once: true });
+    bar.addEventListener('pointerup', stop);
+    bar.addEventListener('pointercancel', stop);
   });
 }
 function setVolume(p, save = true) {
@@ -764,11 +783,19 @@ if ('mediaSession' in navigator) {
   navigator.mediaSession.setActionHandler('play', () => audio.play());
   navigator.mediaSession.setActionHandler('pause', () => audio.pause());
   navigator.mediaSession.setActionHandler('nexttrack', skip);
+  navigator.mediaSession.setActionHandler('previoustrack', () => { audio.currentTime = 0; });
+  navigator.mediaSession.setActionHandler('seekto', (d) => { if (audio.duration && d.seekTime != null) audio.currentTime = d.seekTime; });
 }
+
+// A focused button would otherwise also be "clicked" by Space when the key is released.
+window.addEventListener('keyup', (e) => {
+  if (settings.shortcuts && e.code === 'Space' && !['INPUT', 'TEXTAREA'].includes(e.target.tagName)) e.preventDefault();
+});
 
 window.addEventListener('keydown', (e) => {
   if (!settings.shortcuts || e.ctrlKey || e.metaKey || e.altKey) return;
   if (e.target.tagName === 'INPUT') { if (e.key === 'Escape') clearSearch(); return; }
+  if (e.repeat) return;
   const handled = {
     Space: togglePlay, ArrowRight: skip, ArrowUp: () => rate(true), ArrowDown: () => rate(false),
     KeyM: toggleMute, Slash: () => $('searchInput').focus(),
@@ -822,10 +849,13 @@ async function runSearch(text) {
 
 async function createStation(hit) {
   try {
+    const before = new Set(state.stations.map((s) => s.token));
     await api(window.pandora.createStation(hit.token));
     await loadStations();
     clearSearch();
-    const made = state.stations.find((s) => s.name.toLowerCase().includes(hit.title.toLowerCase()));
+    const fresh = state.stations.filter((s) => !before.has(s.token));
+    // Pandora hands back an existing station for an artist you already have, so there may be nothing new.
+    const made = fresh[0] || state.stations.find((s) => s.name.toLowerCase().includes(hit.title.toLowerCase()));
     toast(`Created ${hit.title}`);
     if (made) playStation(made); else showView('home');
   } catch (e) { toast(e.message); }
@@ -1047,7 +1077,7 @@ function renderSettings() {
       if (row.desc) label.append(el('div', { className: 'set-desc', textContent: row.desc }));
       let control;
       if (row.type === 'toggle') {
-        control = el('button', { className: 'switch' + (settings[row.key] ? ' on' : ''), role: 'switch' });
+        control = el('button', { className: 'switch' + (settings[row.key] ? ' on' : ''), role: 'switch', ariaChecked: String(!!settings[row.key]), ariaLabel: row.label });
         control.addEventListener('click', () => { settings[row.key] = !settings[row.key]; rerender(); });
       } else if (row.type === 'seg') {
         control = el('div', { className: 'seg' });
@@ -1167,7 +1197,11 @@ async function enterApp() {
   $('login').classList.add('hidden');
   $('app').classList.remove('hidden');
   $('greeting').textContent = greeting();
-  await loadStations();
+  try {
+    await loadStations();
+  } catch (e) {
+    toast(`Couldn\u2019t load your stations: ${e.message}`);
+  }
   renderBar();
   renderNow();
   renderSettings();
@@ -1195,4 +1229,6 @@ $('loginForm').addEventListener('submit', async (e) => {
   const r = await window.pandora.savedLogin();
   if (r.ok && r.data) return enterApp();
   $('login').classList.remove('hidden');
+  // Saved credentials that no longer work (or no connection) shouldn't just silently drop you at the login form.
+  if (!r.ok) $('loginError').textContent = r.error || '';
 })();

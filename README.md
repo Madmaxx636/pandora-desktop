@@ -6,7 +6,9 @@ A clean desktop client for Pandora Radio on Linux and Windows, laid out like Spo
 
 ## Features
 
-- Station list with **pinning**, a wide **search** that creates stations, and a **Tune station** page (rename, add or remove seed artists and songs, review and undo thumbs)
+- Station list with **pinning**, a wide **search** that creates stations, **station deletion**, and a **Tune station** page (rename, add or remove seed artists, songs and genres, review and undo thumbs)
+- Upcoming songs buffer ahead of time, and any song in History can be replayed or rated
+- **Spell check** with suggestions in text fields, and an interface that scales down to small windows
 - Thumbs up / down, skip, seek, volume, media keys and the system now-playing widget
 - **Background playback**: close to the taskbar or the tray, start minimized, launch at login
 - Album-colour backdrop, accent colours, audio quality, history length and more in Settings
@@ -18,6 +20,8 @@ Download the latest build from [Releases](https://github.com/Madmaxx636/pandora-
 
 - **Linux:** `pandora-desktop_<version>_amd64.deb` (`sudo apt install ./pandora-desktop_*.deb`) or the `.AppImage`
 - **Windows:** `Pandora-Setup-<version>.exe`. The installer isn't code-signed, so SmartScreen will warn: choose *More info → Run anyway*.
+
+On Linux the app only remembers your login if a keyring (KWallet, GNOME Keyring) is running; otherwise you sign in each launch.
 
 Accounts that sign in with Google, Apple or Facebook need a Pandora password set first.
 
@@ -34,12 +38,20 @@ On Linux, if Electron reports the SUID sandbox helper is misconfigured:
 sudo chown root:root node_modules/electron/dist/chrome-sandbox && sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
 ```
 
-## Release
-
-Bump `version` in `package.json`, commit, then tag and push:
+## Test
 
 ```bash
-git tag v1.0.1 && git push origin main v1.0.1
+npm test
+```
+
+Runs the Pandora client tests (encryption, error handling, playlist and search parsing) with Node's built-in runner. They also run in CI on every push.
+
+## Release
+
+Add the changes to `CHANGELOG.md`, run `npm version <x.y.z>` (it bumps `package.json` and tags), then push the commit and tag:
+
+```bash
+git push origin main --follow-tags
 ```
 
 The *Release* workflow builds the Linux and Windows installers and publishes them, with the update metadata the app uses to update itself.

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, powerSaveBlocker, safeStorage, shell } = require('electron');
+const { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, powerSaveBlocker, safeStorage, screen, session, shell } = require('electron');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -20,8 +20,10 @@ const credsFile = () => path.join(app.getPath('userData'), 'credentials.bin');
 
 async function saveCreds(username, password) {
   if (!(await safeStorage.isAsyncEncryptionAvailable())) return;
+  // Without a keyring Linux falls back to a hard-coded key, which protects nothing: don't pretend to.
+  if (process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text') return;
   const blob = await safeStorage.encryptStringAsync(JSON.stringify({ username, password }));
-  fs.writeFileSync(credsFile(), blob);
+  fs.writeFileSync(credsFile(), blob, { mode: 0o600 });
 }
 
 async function loadCreds() {
@@ -45,8 +47,14 @@ function loadBehavior() {
   } catch {}
 }
 
-function setBehavior(next) {
-  const launchChanged = next.launchAtLogin !== behavior.launchAtLogin;
+const CLOSE_ACTIONS = ['minimize', 'tray', 'quit'];
+
+function setBehavior(input) {
+  if (!input || typeof input !== 'object') return;
+  const next = {};
+  if (CLOSE_ACTIONS.includes(input.closeAction)) next.closeAction = input.closeAction;
+  for (const k of ['startMinimized', 'launchAtLogin', 'autoUpdate']) if (typeof input[k] === 'boolean') next[k] = input[k];
+  const launchChanged = 'launchAtLogin' in next && next.launchAtLogin !== behavior.launchAtLogin;
   behavior = { ...BEHAVIOR_DEFAULTS, ...behavior, ...next };
   fs.writeFileSync(behaviorFile(), JSON.stringify(behavior));
   if (launchChanged) applyLaunchAtLogin();
@@ -70,6 +78,37 @@ function applyLaunchAtLogin() {
     app.setLoginItemSettings({ openAtLogin: behavior.launchAtLogin, args: ['--hidden'] });
   }
 }
+
+/* ---------- window size and position ---------- */
+
+const stateFile = () => path.join(app.getPath('userData'), 'window.json');
+
+function loadWindowState() {
+  try {
+    const s = JSON.parse(fs.readFileSync(stateFile(), 'utf8'));
+    const { x, y, width, height } = s;
+    if (![width, height].every(Number.isFinite)) return null;
+    // Only reuse the position if that spot is still on a connected screen.
+    const onScreen = Number.isFinite(x) && Number.isFinite(y) && screen.getAllDisplays().some((d) => {
+      const b = d.workArea;
+      return x + 80 > b.x && x + 80 < b.x + b.width && y + 40 > b.y && y + 40 < b.y + b.height;
+    });
+    return { width, height, ...(onScreen ? { x, y } : {}), maximized: !!s.maximized };
+  } catch {
+    return null;
+  }
+}
+
+function saveWindowState() {
+  if (!win || win.isDestroyed() || win.isMinimized()) return;
+  const maximized = win.isMaximized();
+  const b = maximized ? (windowBounds || win.getBounds()) : win.getBounds();
+  try { fs.writeFileSync(stateFile(), JSON.stringify({ ...b, maximized })); } catch {}
+}
+
+let windowBounds = null; // last normal (not maximised) bounds
+let saveTimer;
+const queueSaveWindowState = () => { clearTimeout(saveTimer); saveTimer = setTimeout(saveWindowState, 400); };
 
 /* ---------- IPC ---------- */
 
@@ -114,7 +153,9 @@ handle('track:rate', (station, track, up) => api.rate(station, track, up));
 
 ipcMain.on('app:behavior', (_e, next) => setBehavior(next));
 ipcMain.on('app:nowPlaying', (_e, info) => {
-  nowPlaying = info;
+  if (!info || typeof info !== 'object') return;
+  nowPlaying = { title: String(info.title || '').slice(0, 200), artist: String(info.artist || '').slice(0, 200), playing: !!info.playing };
+  info = nowPlaying;
   // Keep the system awake while music plays so a hidden window isn't suspended.
   if (info.playing && blockerId === null) blockerId = powerSaveBlocker.start('prevent-app-suspension');
   if (!info.playing && blockerId !== null) { powerSaveBlocker.stop(blockerId); blockerId = null; }
@@ -221,10 +262,14 @@ function setupSpellcheck(contents) {
   });
 }
 
+const isWebUrl = (url) => /^https?:\/\//i.test(url);
+
 function createWindow(hidden) {
+  const saved = loadWindowState();
   win = new BrowserWindow({
-    width: 1240,
-    height: 800,
+    width: saved?.width ?? 1240,
+    height: saved?.height ?? 800,
+    ...(saved && 'x' in saved ? { x: saved.x, y: saved.y } : {}),
     minWidth: 380,
     minHeight: 300,
     show: !hidden,
@@ -235,6 +280,8 @@ function createWindow(hidden) {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
       autoplayPolicy: 'no-user-gesture-required',
       backgroundThrottling: false, // keep the queue and progress running while hidden
     },
@@ -242,9 +289,25 @@ function createWindow(hidden) {
   win.removeMenu();
   setupSpellcheck(win.webContents);
   win.loadFile(path.join(__dirname, '../renderer/index.html'));
+  if (saved?.maximized) win.maximize();
+  windowBounds = win.getBounds();
+  for (const ev of ['resize', 'move']) {
+    win.on(ev, () => {
+      if (!win.isMaximized() && !win.isMinimized()) windowBounds = win.getBounds();
+      queueSaveWindowState();
+    });
+  }
+  win.on('maximize', queueSaveWindowState);
+  win.on('unmaximize', queueSaveWindowState);
+
+  // The app never navigates away from its own page; links open in the browser, and only web links at that.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    if (isWebUrl(url)) shell.openExternal(url);
     return { action: 'deny' };
+  });
+  win.webContents.on('will-navigate', (e) => e.preventDefault());
+  win.webContents.on('render-process-gone', (_e, details) => {
+    if (details.reason !== 'clean-exit' && win && !win.isDestroyed()) win.reload();
   });
 
   // Closing doesn't have to stop the music: minimise to the taskbar or hide to the tray instead.
@@ -265,6 +328,10 @@ if (!app.requestSingleInstanceLock()) {
   app.on('second-instance', showWindow);
 
   app.whenReady().then(() => {
+    app.setAppUserModelId('io.github.madmaxx636.pandora-desktop');
+    // The page only ever needs desktop notifications; refuse everything else (camera, location, ...).
+    session.defaultSession.setPermissionRequestHandler((_wc, permission, done) => done(permission === 'notifications'));
+    session.defaultSession.setPermissionCheckHandler((_wc, permission) => permission === 'notifications');
     loadBehavior();
     const launchedHidden = process.argv.includes('--hidden');
     // Starting hidden only makes sense with a tray to bring the window back from.
@@ -279,6 +346,6 @@ if (!app.requestSingleInstanceLock()) {
     if ((launchedHidden || behavior.startMinimized) && !hidden) win.once('ready-to-show', () => win.minimize());
   });
 
-  app.on('before-quit', () => { quitting = true; });
+  app.on('before-quit', () => { quitting = true; saveWindowState(); });
   app.on('window-all-closed', () => app.quit());
 }

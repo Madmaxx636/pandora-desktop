@@ -2,6 +2,19 @@
 
 All notable changes to Pandora Desktop. Each release's notes on GitHub repeat its entry here, with SHA-256 checksums for the installers.
 
+## 1.0.12 - 2026-11-26
+
+- The window now reopens at the size and position you left it, including maximised.
+- Fixed songs failing to start (or "Pandora has nothing more to play") when you switched stations or skipped several times quickly.
+- Songs queued for a long time (for example after your laptop slept) are refetched instead of failing on an expired link.
+- Pressing Space no longer sometimes toggles playback twice, and holding an arrow key no longer skips through a whole queue.
+- Creating a station for an artist you already have now plays that station instead of guessing by name.
+- If a saved login can't be used (offline, changed password), the login screen now says why. Network problems and timeouts show a plain message instead of hanging.
+- Security hardening: only web links open in your browser, the app can't navigate away from its own page, unused browser permissions are refused, and settings coming from the page are validated.
+- On Linux, your login is only remembered when a system keyring is available. Without one the saved copy would have been protected by a built-in key, so it is no longer written; you will sign in each launch.
+- Added screen-reader names for icon buttons and switches, previous-track and seek support for media keys, and the correct app identity for Windows notifications.
+- Electron updated to 45.5.0. Added automated tests for the Pandora client and a CI check on every push.
+
 ## 1.0.11 - 2026-11-02
 
 - Spell check now works: right-click a misspelled (red-underlined) word in the search boxes or the station name to pick a correction or add it to your dictionary. Right-click also gives Cut, Copy, Paste and Select all in text fields.

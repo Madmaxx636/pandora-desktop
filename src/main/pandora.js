@@ -1,6 +1,7 @@
 // Client for Pandora's unofficial JSON v5 API (http://6xq.net/playground/pandora-apidoc/json/).
 const HOST = 'tuner.pandora.com';
 const INVALID_AUTH_TOKEN = 1001;
+const REQUEST_TIMEOUT_MS = 20000;
 
 // Public "android" partner credentials, as documented in the API write-up above.
 const PARTNER_USER = 'android';
@@ -53,8 +54,14 @@ class PandoraApi {
     this.timeOffset = 0;
   }
 
-  async login(username, password) {
-    this.saved = { username, password };
+  // Several calls can hit an expired token at once; they should share one re-login, not each start their own.
+  login(username, password) {
+    if (this.loggingIn) return this.loggingIn;
+    this.loggingIn = this.doLogin(username, password).finally(() => { this.loggingIn = null; });
+    return this.loggingIn;
+  }
+
+  async doLogin(username, password) {
     this.reset();
     const Blowfish = await loadBlowfish();
     this.enc = new Blowfish(ENCRYPT_KEY, Blowfish.MODE.ECB, Blowfish.PADDING.NULL);
@@ -83,6 +90,7 @@ class PandoraApi {
     });
     this.userId = user.userId;
     this.userToken = user.userAuthToken;
+    this.saved = { username, password };
     return { subscriber: !!user.isSubscriber };
   }
 
@@ -228,6 +236,10 @@ class PandoraApi {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
       body,
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    }).catch((e) => {
+      if (e.name === 'TimeoutError') throw new PandoraError('Pandora took too long to respond. Check your connection and try again.');
+      throw new PandoraError(`Couldn’t reach Pandora (${e.cause?.code || e.message}). Check your connection.`);
     });
     if (!res.ok) throw new PandoraError(`HTTP ${res.status}`);
     const tree = await res.json();
